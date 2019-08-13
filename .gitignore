@@ -1,0 +1,4 @@
+*.o
+*.raw
+lib/save/*
+lib/apex/*
