@@ -1288,7 +1288,9 @@ void prt_map(void)
 	{
 		for (x = p_ptr->wx, vx = COL_MAP; vx < tx; vx++, x++)
 		{
-
+			/* Check bounds */
+			if (!in_bounds(y, x)) continue;
+      
 #ifdef USE_TRANSPARENCY
 
 			/* Determine what is there */
@@ -1433,7 +1435,6 @@ void display_map(int *cy, int *cx)
 	int px = p_ptr->px;
 
 	int map_hgt, map_wid;
-
 	int row, col;
 
 	int x, y;
@@ -1460,10 +1461,6 @@ void display_map(int *cy, int *cx)
 	if (map_hgt > DUNGEON_HGT) map_hgt = DUNGEON_HGT;
 	if (map_wid > DUNGEON_WID) map_wid = DUNGEON_WID;
 
-	/* Silliness XXX XXX XXX */
-	if ((cy != NULL) && (map_hgt > SCREEN_HGT)) map_hgt = SCREEN_HGT;
-	if ((cx != NULL) && (map_wid > SCREEN_WID)) map_wid = SCREEN_WID;
-
 
 	/* Prevent accidents */
 	if ((map_wid < 1) || (map_hgt < 1)) return;
@@ -1482,18 +1479,18 @@ void display_map(int *cy, int *cx)
 	ta = TERM_WHITE;
 	tc = ' ';
 
-	/* Clear the small scale map */
+  /* Clear the priorities */
 	for (y = 0; y < map_hgt; ++y)
 	{
 		for (x = 0; x < map_wid; ++x)
 		{
-			/* Erase the grid */
-			Term_putch(x + 1, y + 1, ta, tc);
-
 			/* No priority */
 			mp[y][x] = 0;
 		}
 	}
+
+	/* Clear the screen (but don't force a redraw) */
+	clear_from(0);
 
 	/* Corners */
 	x = map_wid + 1;
@@ -1591,6 +1588,7 @@ void display_map(int *cy, int *cx)
 void do_cmd_view_map(void)
 {
 	int cy, cx;
+  cptr prompt = "Hit any key to continue";
 
 	/* Save screen */
 	screen_save();
@@ -1607,8 +1605,8 @@ void do_cmd_view_map(void)
 	/* Display the map */
 	display_map(&cy, &cx);
 
-	/* Wait for it */
-	put_str("Hit any key to continue", 23, 23);
+	/* Show the prompt */
+	put_str(prompt, Term->hgt - 1, Term->wid / 2 - strlen(prompt) / 2);
 
 	/* Hilite the player */
 	Term_gotoxy(cx, cy);

@@ -3207,12 +3207,12 @@ bool mon_take_hit(int m_idx, int dam, bool *fear, cptr note, bool bypet)
 bool modify_panel(int wy, int wx)
 {
 	/* Verify wy, adjust if needed */
-	/* if (p_ptr->depth == 0) wy = SCREEN_HGT; */
+	/* if (p_ptr->depth == 0) wy = 0; */
 	if (wy > DUNGEON_HGT - SCREEN_HGT) wy = DUNGEON_HGT - SCREEN_HGT;
 	else if (wy < 0) wy = 0;
 
 	/* Verify wx, adjust if needed */
-	/* if (p_ptr->depth == 0) wx = SCREEN_WID; */
+	/* if (p_ptr->depth == 0) wx = 0; */
 	if (wx > DUNGEON_WID - SCREEN_WID) wx = DUNGEON_WID - SCREEN_WID;
 	else if (wx < 0) wx = 0;
 
@@ -3322,7 +3322,6 @@ void verify_panel(void)
 	{
 		wx = ((px - PANEL_WID / 2) / PANEL_WID) * PANEL_WID;
 	}
-
 
 	/* Scroll if needed */
 	if (modify_panel(wy, wx))
@@ -3897,6 +3896,10 @@ static void target_set_interactive_prepare(int mode)
 	{
 		for (x = p_ptr->wx; x < p_ptr->wx + SCREEN_WID; x++)
 		{
+			/* Check bounds */
+                        if (!in_bounds_fully(y, x)) continue;
+
+
 			/* Require line of sight, unless "look" is "expanded" */
 			if (!expand_look && !player_has_los_bold(y, x)) continue;
 

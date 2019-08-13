@@ -16,9 +16,6 @@
  * To use this file, you must define "USE_GCU" in the Makefile.
  *
  *
- * Hack -- note that "angband.h" is included AFTER the #ifdef test.
- * This was necessary because of annoying "curses.h" silliness.
- *
  * Note that this file is not "intended" to support non-Unix machines,
  * nor is it intended to support VMS or other bizarre setups.
  *
@@ -51,10 +48,15 @@
 
 #ifdef USE_GCU
 
+#include "main.h"
+
 /*
- * Hack -- play games with "bool"
+ * Hack -- play games with "bool" and "term"
  */
 #undef bool
+
+/* Avoid 'struct term' name conflict with <curses.h> (via <term.h>) on AIX */
+#define term System_term
 
 /*
  * Include the proper "header" file
@@ -64,6 +66,8 @@
 #else
 # include <curses.h>
 #endif
+
+#undef term
 
 /*
  * Try redefining the colors at startup.
@@ -239,6 +243,11 @@ static int can_fix_color = FALSE;
  * Simple Angband to Curses color conversion table
  */
 static int colortable[16];
+
+/**
+ * Background color we should draw with; either BLACK or DEFAULT
+ */
+static int bg_color = COLOR_BLACK;
 
 #endif
 
@@ -509,6 +518,11 @@ static errr Term_xtra_gcu_alive(int v)
 }
 
 
+#ifdef USE_NCURSES
+const char help_gcu[] = "NCurses, for terminal console, subopts -b(ig screen)";
+#else /* USE_NCURSES */
+const char help_gcu[] = "Curses, for terminal console, subopts -b(ig screen)";
+#endif /* USE_NCURSES */
 
 
 /*
@@ -681,6 +695,26 @@ static errr Term_xtra_gcu_event(int v)
 
 #endif	/* USE_GETCH */
 
+static int scale_color(int i, int j, int scale)
+{
+    return (angband_color_table[i][j] * (scale - 1) + 127) / 255;
+}
+
+static int create_color(int i, int scale)
+{
+    int r = scale_color(i, 1, scale);
+    int g = scale_color(i, 2, scale);
+    int b = scale_color(i, 3, scale);
+    int rgb = 16 + scale * scale * r + scale * g + b;
+    /* In the case of white and black we need to use the ANSI colors */
+    if (r == g && g == b)
+    {
+        if (b == 0) rgb = 0;
+        if (b == scale) rgb = 15;
+    }
+    return rgb;
+}
+
 /*
  * React to changes
  */
@@ -688,21 +722,27 @@ static errr Term_xtra_gcu_react(void)
 {
 
 #ifdef A_COLOR
-
-	int i;
-
-	/* Cannot handle color redefinition */
-	if (!can_fix_color) return (0);
-
-	/* Set the colors */
-	for (i = 0; i < 16; i++)
-	{
-		/* Set one color (note scaling) */
-		init_color(i,
-                           angband_color_table[i][1] * 1000 / 255,
-		           angband_color_table[i][2] * 1000 / 255,
-		           angband_color_table[i][3] * 1000 / 255);
-	}
+    if (COLORS == 256 || COLORS == 88)
+    {
+        /* If we have more than 16 colors, find the best matches. These numbers
+        * correspond to xterm/rxvt's builtin color numbers--they do not
+        * correspond to curses' constants OR with curses' color pairs.
+        *
+        * XTerm has 216 (6*6*6) RGB colors, with each RGB setting 0-5.
+        * RXVT has 64 (4*4*4) RGB colors, with each RGB setting 0-3.
+        *
+        * Both also have the basic 16 ANSI colors, plus some extra grayscale
+        * colors which we do not use.
+        */
+        int i;
+        int scale = COLORS == 256 ? 6 : 4;
+        for (i = 0; i < 16; i++)
+        {
+            int fg = create_color(i, scale);
+            init_pair(i + 1, fg, bg_color);
+            colortable[i] = COLOR_PAIR(i + 1) | A_NORMAL;
+        }
+    }
 
 #endif
 
@@ -875,7 +915,7 @@ static errr Term_text_gcu(int x, int y, int n, byte a, cptr s)
 #endif
 
 		/* Draw a normal character */
-		waddch(td->win, s[i]);
+		waddch(td->win, (byte)s[i]);
 	}
 
 	/* Success */
@@ -951,28 +991,33 @@ static void hook_quit(cptr str)
  *
  * Someone should really check the semantics of "initscr()"
  */
-errr init_gcu(int argc, char *argv[])
+errr init_gcu(int argc, char **argv)
 {
 	int i;
 
 	int num_term = MAX_TERM_DATA, next_win = 0;
 
+	bool use_big_screen = FALSE;
+
 	
-	/* Unused */
-	(void)argc;
-	(void)argv;
-	
+	/* Parse args */
+	for (i = 1; i < argc; i++)
+	{
+		if (prefix(argv[i], "-b"))
+		{
+			use_big_screen = TRUE;
+			continue;
+		}
+
+		plog_fmt("Ignoring option: %s", argv[i]);
+	}
+
+
 	/* Extract the normal keymap */
 	keymap_norm_prepare();
 
-
-#if defined(USG)
-	/* Initialize for USG Unix */
+	/* Initialize */
 	if (initscr() == NULL) return (-1);
-#else
-	/* Initialize for other systems */
-	if (initscr() == (WINDOW*)ERR) return (-1);
-#endif
 
 	/* Activate hooks */
 	quit_aux = hook_quit;
@@ -1087,62 +1132,86 @@ errr init_gcu(int argc, char *argv[])
 
 	/*** Now prepare the term(s) ***/
 
-	/* Create several terms */
-	for (i = 0; i < num_term; i++)
+	/* Big screen -- one big term */
+	if (use_big_screen)
 	{
-		int rows, cols, y, x;
-
-		/* Decide on size and position */
-		switch (i)
-		{
-			/* Upper left */
-			case 0:
-				rows = 24;
-				cols = 80;
-				y = x = 0;
-				break;
-
-			/* Lower left */
-			case 1:
-				rows = LINES - 25;
-				cols = 80;
-				y = 25;
-				x = 0;
-				break;
-
-			/* Upper right */
-			case 2:
-				rows = 24;
-				cols = COLS - 81;
-				y = 0;
-				x = 81;
-				break;
-
-			/* Lower right */
-			case 3:
-				rows = LINES - 25;
-				cols = COLS - 81;
-				y = 25;
-				x = 81;
-				break;
-
-			/* XXX */
-			default:
-				rows = cols = y = x = 0;
-				break;
-		}
-
-		/* Skip non-existant windows */
-		if (rows <= 0 || cols <= 0) continue;
-
 		/* Create a term */
-		term_data_init_gcu(&data[next_win], rows, cols, y, x);
+		term_data_init_gcu(&data[0], LINES, COLS, 0, 0);
 
 		/* Remember the term */
-		angband_term[next_win] = &data[next_win].t;
+		angband_term[0] = &data[0].t;
+	}
 
-		/* One more window */
-		next_win++;
+	/* No big screen -- create as many term windows as possible */
+	else
+	{
+		/* Create several terms */
+		for (i = 0; i < num_term; i++)
+		{
+			int rows, cols, y, x;
+
+			/* Decide on size and position */
+			switch (i)
+			{
+				/* Upper left */
+				case 0:
+				{
+					rows = 24;
+					cols = 80;
+					y = x = 0;
+					break;
+				}
+
+				/* Lower left */
+				case 1:
+				{
+					rows = LINES - 25;
+					cols = 80;
+					y = 25;
+					x = 0;
+					break;
+				}
+
+				/* Upper right */
+				case 2:
+				{
+					rows = 24;
+					cols = COLS - 81;
+					y = 0;
+					x = 81;
+					break;
+				}
+
+				/* Lower right */
+				case 3:
+				{
+					rows = LINES - 25;
+					cols = COLS - 81;
+					y = 25;
+					x = 81;
+					break;
+				}
+
+				/* XXX */
+				default:
+				{
+					rows = cols = y = x = 0;
+					break;
+				}
+			}
+
+			/* Skip non-existant windows */
+			if (rows <= 0 || cols <= 0) continue;
+
+			/* Create a term */
+			term_data_init_gcu(&data[next_win], rows, cols, y, x);
+
+			/* Remember the term */
+			angband_term[next_win] = &data[next_win].t;
+
+			/* One more window */
+			next_win++;
+		}
 	}
 
 	/* Activate the "Angband" window screen */
@@ -1157,5 +1226,4 @@ errr init_gcu(int argc, char *argv[])
 
 
 #endif /* USE_GCU */
-
 

@@ -929,11 +929,15 @@ static void vault_traps(int y, int x, int yd, int xd, int num)
 
 
 /*
- * Hack -- Place some sleeping monsters near the given location
+ * Place some sleeping monsters near the given location
  */
 static void vault_monsters(int y1, int x1, int num)
 {
 	int k, i, y, x;
+  int mon_level_old = monster_level;
+
+	/* Temporary increase monster level */
+	monster_level += 2;
 
 	/* Try to summon "num" monsters "near" the given location */
 	for (k = 0; k < num; k++)
@@ -950,11 +954,14 @@ static void vault_monsters(int y1, int x1, int num)
 			if (!cave_empty_bold(y, x)) continue;
 
 			/* Place the monster (allow groups) */
-			monster_level = p_ptr->depth + 2;
 			(void)place_monster(y, x, TRUE, TRUE);
-			monster_level = p_ptr->depth;
+
+      break;
 		}
 	}
+  
+	/* Restore monster level */
+	monster_level = mon_level_old;
 }
 
 
