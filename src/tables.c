@@ -2119,7 +2119,7 @@ cptr window_flag_desc[32] =
 	"Display overhead view",
 	"Display monster recall",
 	"Display object recall",
-	NULL,
+	"Display monster list",
 	"Display snap-shot",
 	NULL,
 	NULL,

@@ -3088,7 +3088,11 @@ void play_game(bool new_game)
 	/* Process */
 	while (TRUE)
 	{
-		/* Process the level */
+    /* Update monster list window */
+    p_ptr->window |= (PW_MONLIST);
+
+    
+    /* Process the level */
 		dungeon();
 
 

@@ -2670,6 +2670,10 @@ void monster_death(int m_idx)
 	/* Get the location */
 	y = m_ptr->fy;
 	x = m_ptr->fx;
+ 
+  /* Update monster list window */
+  p_ptr->window |= (PW_MONLIST);
+
 
 	/* Handle the possibility of player vanquishing arena combatant -KMW- */
 	if (p_ptr->inside_arena)
